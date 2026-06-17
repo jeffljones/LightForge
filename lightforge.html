@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>LightForge</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LightForge">
+<meta name="theme-color" content="#13242B">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --ink:#13242B;
+    --ink-2:#1C333C;
+    --paper:#ECEEEA;
+    --card:#FFFFFF;
+    --amber:#E69A2E;
+    --amber-deep:#C97F1B;
+    --slate:#5E7785;
+    --slate-soft:#8CA2AD;
+    --line:#DCE0DB;
+    --line-ink:#2B454F;
+    --text:#15252B;
+    --text-soft:#566A71;
+    --brick:#B4533F;
+    --good:#3E7D5A;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(19,36,43,.06),0 6px 18px rgba(19,36,43,.06);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--text);
+    font-family:'Hanken Grotesk',system-ui,-apple-system,sans-serif;
+    font-size:16px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:540px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:30;
+    background:var(--ink);color:var(--paper);
+    padding:14px 18px 12px;
+  }
+  .brand{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .brand h1{
+    font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.06em;
+    text-transform:uppercase;font-size:20px;margin:0;line-height:1;
+  }
+  .brand h1 .arc{color:var(--amber)}
+  .brand .sub{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate-soft);font-weight:600}
+  .navbtns{display:flex;gap:6px;margin-top:12px}
+  .navbtn{
+    flex:0 0 auto;border:0;cursor:pointer;
+    font-family:'Hanken Grotesk',sans-serif;font-weight:600;font-size:13px;
+    letter-spacing:.04em;color:var(--slate-soft);
+    background:transparent;padding:6px 12px;border-radius:20px;
+  }
+  .navbtn.on{background:var(--ink-2);color:#fff}
+
+  /* ---------- day tabs ---------- */
+  .daytabs{display:flex;gap:10px;padding:14px 16px 4px}
+  .daytab{
+    flex:1;cursor:pointer;border:1.5px solid var(--line);
+    background:var(--card);border-radius:var(--radius);
+    padding:12px 12px;text-align:left;transition:border-color .15s,background .15s;
+  }
+  .daytab .lab{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:13px;color:var(--slate)}
+  .daytab .ttl{font-family:'Oswald',sans-serif;font-weight:500;font-size:18px;color:var(--text);line-height:1.1;margin-top:2px}
+  .daytab.on{border-color:var(--ink);background:var(--ink)}
+  .daytab.on .lab{color:var(--amber)}
+  .daytab.on .ttl{color:#fff}
+
+  /* ---------- blocks ---------- */
+  .scroll{flex:1;padding:8px 16px 130px}
+  .block{margin-top:18px}
+  .block-head{display:flex;align-items:center;gap:10px;margin:0 2px 8px}
+  .block-head .name{
+    font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;font-size:12px;color:var(--slate);
+  }
+  .block-head .rule{flex:1;height:1px;background:var(--line)}
+
+  /* ---------- exercise card ---------- */
+  .ex{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
+  .ex-top{display:flex;align-items:flex-start;gap:10px;padding:13px 14px 10px;cursor:pointer}
+  .ex-name{flex:1;min-width:0}
+  .ex-name .n{font-weight:700;font-size:16px;line-height:1.2;color:var(--text)}
+  .ex-name .scheme{font-size:12.5px;color:var(--text-soft);margin-top:2px}
+  .ex-flags{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto}
+  .pr{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.08em;font-size:11px;text-transform:uppercase;color:#fff;background:var(--amber);padding:2px 7px;border-radius:5px;display:none}
+  .pr.show{display:inline-block}
+  .chev{color:var(--slate-soft);font-size:13px;transition:transform .18s}
+  .ex.open .chev{transform:rotate(90deg)}
+
+  .ex-meta{display:flex;gap:14px;padding:0 14px 12px;font-size:12.5px}
+  .ex-meta .m{display:flex;flex-direction:column}
+  .ex-meta .m .k{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--slate-soft);font-weight:700}
+  .ex-meta .m .v{font-family:'Oswald',sans-serif;font-size:15px;color:var(--slate);font-weight:500}
+  .ex-meta .m.best .v{color:var(--amber-deep)}
+
+  .ex-body{display:none;padding:0 14px 14px;border-top:1px solid var(--line)}
+  .ex.open .ex-body{display:block}
+  .note{background:#F6F4EE;border-left:3px solid var(--amber);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text-soft);margin:12px 0 4px}
+
+  /* check type */
+  .checkrow{display:flex;align-items:center;gap:12px;margin-top:14px}
+  .checkbox{width:30px;height:30px;border-radius:8px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;font-size:16px;color:transparent;transition:.15s}
+  .checkbox.on{background:var(--good);border-color:var(--good);color:#fff}
+  .checkrow .lbl{font-size:14px;color:var(--text-soft);font-weight:600}
+
+  /* set rows */
+  .sets{margin-top:12px}
+  .set-head{display:grid;grid-template-columns:34px 1fr 1fr 30px;gap:8px;padding:0 2px 4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--slate-soft);font-weight:700}
+  .set-head.two{grid-template-columns:34px 1fr 30px}
+  .set-row{display:grid;grid-template-columns:34px 1fr 1fr 30px;gap:8px;align-items:center;margin-bottom:8px}
+  .set-row.two{grid-template-columns:34px 1fr 30px}
+  .setno{font-family:'Oswald',sans-serif;font-weight:600;color:var(--slate);text-align:center;font-size:15px}
+  .stepper{display:flex;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .stepper button{flex:0 0 38px;height:42px;border:0;background:transparent;font-size:20px;font-weight:700;color:var(--ink);cursor:pointer;font-family:'Hanken Grotesk',sans-serif;line-height:1}
+  .stepper button:active{background:var(--line)}
+  .stepper input{flex:1;width:100%;min-width:0;border:0;background:transparent;text-align:center;font-family:'Oswald',sans-serif;font-weight:500;font-size:18px;color:var(--text);padding:0;-moz-appearance:textfield}
+  .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .stepper.pr-set{border-color:var(--amber);box-shadow:0 0 0 2px rgba(230,154,46,.2)}
+  .rm{border:0;background:transparent;color:var(--slate-soft);font-size:20px;cursor:pointer;height:42px;border-radius:8px}
+  .rm:active{background:var(--line)}
+  .addset{margin-top:2px;border:1px dashed var(--line);background:transparent;color:var(--slate);font-weight:600;font-size:13.5px;padding:9px;border-radius:10px;width:100%;cursor:pointer}
+  .addset:active{background:var(--paper)}
+
+  /* ---------- save bar ---------- */
+  .savebar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;pointer-events:none;padding:0 16px 16px}
+  .savebar-inner{width:100%;max-width:508px;pointer-events:auto;display:flex;gap:10px}
+  .save{flex:1;border:0;cursor:pointer;background:var(--amber);color:#241400;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:16px;padding:15px;border-radius:14px;box-shadow:0 6px 22px rgba(19,36,43,.18)}
+  .save:active{background:var(--amber-deep)}
+  .save:disabled{background:var(--slate-soft);color:#fff;opacity:.7}
+
+  .toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:30px;font-weight:600;font-size:14px;opacity:0;transition:.25s;z-index:50;box-shadow:var(--shadow);white-space:nowrap}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ---------- history ---------- */
+  .hist{padding:14px 16px 120px}
+  .hist h2{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:15px;color:var(--slate);margin:6px 2px 14px}
+  .sess{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
+  .sess-top{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer}
+  .sess-day{font-family:'Oswald',sans-serif;font-weight:600;font-size:14px;background:var(--ink);color:#fff;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .sess-info{flex:1}
+  .sess-info .d{font-weight:700;font-size:15px}
+  .sess-info .s{font-size:12px;color:var(--text-soft)}
+  .sess-body{display:none;padding:0 14px 12px;border-top:1px solid var(--line)}
+  .sess.open .sess-body{display:block}
+  .sess-line{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--paper);font-size:13.5px}
+  .sess-line:last-child{border-bottom:0}
+  .sess-line .en{color:var(--text);font-weight:600}
+  .sess-line .ev{font-family:'Oswald',sans-serif;color:var(--slate);font-weight:500;text-align:right}
+  .empty{text-align:center;color:var(--text-soft);padding:50px 20px;font-size:14.5px}
+  .empty .big{font-family:'Oswald',sans-serif;font-size:40px;color:var(--line);font-weight:600;display:block;margin-bottom:8px;letter-spacing:.1em}
+
+  .danger{margin:26px 2px 0}
+  .danger button{width:100%;border:1px solid var(--line);background:transparent;color:var(--brick);font-weight:600;font-size:13.5px;padding:11px;border-radius:12px;cursor:pointer}
+  .danger button:active{background:#fff}
+
+  .loading{display:flex;align-items:center;justify-content:center;min-height:60vh;color:var(--slate);font-family:'Oswald',sans-serif;letter-spacing:.1em;text-transform:uppercase;font-size:14px}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  *:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <h1>Light<span class="arc">Forge</span></h1>
+      <span class="sub" id="subline">Train lighter · land softer</span>
+    </div>
+    <div class="navbtns">
+      <button class="navbtn on" id="nav-train">Train</button>
+      <button class="navbtn" id="nav-hist">History</button>
+    </div>
+  </div>
+
+  <div id="view-train">
+    <div class="daytabs">
+      <button class="daytab on" id="tab-A" data-day="A">
+        <div class="lab">Day A</div><div class="ttl">Lower · Hinge + Jump</div>
+      </button>
+      <button class="daytab" id="tab-B" data-day="B">
+        <div class="lab">Day B</div><div class="ttl">Upper · Push + Pull</div>
+      </button>
+    </div>
+    <div class="scroll" id="exlist"><div class="loading">Loading your log…</div></div>
+  </div>
+
+  <div id="view-hist" style="display:none">
+    <div class="hist" id="histlist"></div>
+  </div>
+
+  <div class="savebar" id="savebar">
+    <div class="savebar-inner">
+      <button class="save" id="savebtn">Save session</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   ▼▼▼  PASTE YOUR FIREBASE CONFIG HERE  ▼▼▼
+   Firebase console → Project settings (gear) → "Your apps" → Web app →
+   "SDK setup and configuration" → Config. Copy the values in.
+   Until you do, the app still works and saves to this device only.
+   ===================================================================== */
+window.FB_CONFIG = {
+  apiKey:            "AIzaSyCkyX0SwpalhgAze2DgZUUEV2wN6FrvQLY",
+  authDomain:        "lightforge-jj.firebaseapp.com",
+  projectId:         "lightforge-jj",
+  storageBucket:     "lightforge-jj.firebasestorage.app",
+  messagingSenderId: "783945751086",
+  appId:             "1:783945751086:web:c07348d5c077c29ed05dbf",
+  measurementId:     "G-C3TQJQQNJ2"
+};
+/* ▲▲▲  end Firebase config  ▲▲▲ */
+
+/* ============ PROGRAM (the plan we built, baked in) ============ */
+const PROGRAM = {
+  A: { title:"Lower · Hinge + Jump", blocks:[
+    {name:"Prep", items:[
+      {id:"a_prep", key:"a_prep", name:"Ankle & hip prep", type:"check",
+       scheme:"5–8 min before lifting", note:"Dorsiflexion drills, hip-flexor stretch, banded glute activation. This is the 'most important thing' — front-loaded so it can't get skipped."},
+    ]},
+    {name:"Power", items:[
+      {id:"a_pogo", key:"a_pogo", name:"Pogo hops", type:"reps",
+       scheme:"3 × 10–15 · quiet, stiff, quick contacts", note:"Your landing-mechanics + calf-stiffness work. Minimal knee bend, snap off the floor, land silent."},
+    ]},
+    {name:"Strength", items:[
+      {id:"a_rdl", key:"a_rdl", name:"Romanian deadlift", type:"weight",
+       scheme:"3–4 × 5–8 · trap bar or dumbbells", note:"Jump power + back protection. Flat back, push hips back, feel the hamstrings. Stop 1–2 reps shy of failure."},
+      {id:"a_legpress", key:"a_legpress", name:"Leg press", type:"weight",
+       scheme:"3 × 8–12 · controlled"},
+      {id:"a_split", key:"a_split", name:"Split squat / step-up", type:"weight",
+       scheme:"3 × 8–10 per leg", note:"Single-leg — the biggest court-athlete gap you were missing. Log the per-leg weight."},
+    ]},
+    {name:"Accessory", items:[
+      {id:"a_legext", key:"a_legext", name:"Leg extension", type:"weight",
+       scheme:"3 × 12–15 · light & smooth", note:"Keep it light and controlled — avoid grinding deep heavy reps, easy on the patellar tendon."},
+      {id:"a_legcurl", key:"a_legcurl", name:"Leg curl", type:"weight",
+       scheme:"3 × 10–15"},
+      {id:"a_calf", key:"a_calf", name:"Calf raises", type:"weight",
+       scheme:"3 × 12–15 · standing + seated, slow", note:"Direct fix for cramping and feeds your jump. Do both straight-knee (standing) and bent-knee (seated)."},
+    ]},
+    {name:"Core", items:[
+      {id:"a_pallof", key:"pallof", name:"Pallof press", type:"time",
+       scheme:"3 × 20–30s per side", note:"Anti-rotation — your replacement for the rotation machine. Stand tall, press straight out, resist the twist."},
+      {id:"a_carry", key:"carry", name:"Suitcase carry", type:"weight",
+       scheme:"3 rounds · one heavy dumbbell", note:"Reps = lengths/rounds walked. Stay square and tall, don't lean toward the weight."},
+    ]},
+  ]},
+  B: { title:"Upper · Push + Pull", blocks:[
+    {name:"Prep", items:[
+      {id:"b_prep", key:"b_prep", name:"Thoracic & shoulder prep", type:"check",
+       scheme:"5–8 min before lifting", note:"Thoracic extensions over a roller, open-books, band pull-aparts. Directly targets your stiff upper back and desk posture."},
+    ]},
+    {name:"Power", items:[
+      {id:"b_medball", key:"b_medball", name:"Med-ball slams / passes", type:"reps",
+       scheme:"3 × 5 · optional, explosive", note:"Upper-body power at almost no joint cost. Skip on tight days."},
+    ]},
+    {name:"Strength", items:[
+      {id:"b_chest", key:"b_chest", name:"Chest press", type:"weight",
+       scheme:"3–4 × 6–10", note:"Your missing horizontal push — the pec deck didn't cover this pattern."},
+      {id:"b_pulldown", key:"b_pulldown", name:"Lat pulldown", type:"weight",
+       scheme:"3–4 × 6–10", note:"Building toward unassisted pull-ups over time."},
+      {id:"b_row", key:"b_row", name:"Seated / chest-supported row", type:"weight",
+       scheme:"3 × 8–12", note:"Highest-value posture lift you've got — squeeze the shoulder blades, don't skip it."},
+      {id:"b_press", key:"b_press", name:"Shoulder press", type:"weight",
+       scheme:"3 × 8–12"},
+    ]},
+    {name:"Accessory", items:[
+      {id:"b_revfly", key:"b_revfly", name:"Reverse fly", type:"weight",
+       scheme:"3 × 12–15", note:"The reverse direction of your fly machine — great for rear delts and posture."},
+    ]},
+    {name:"Core", items:[
+      {id:"b_pallof", key:"pallof", name:"Pallof press", type:"time",
+       scheme:"3 × 20–30s per side", note:"Anti-rotation — your replacement for the rotation machine."},
+      {id:"b_carry", key:"carry", name:"Suitcase carry", type:"weight",
+       scheme:"3 rounds · one heavy dumbbell"},
+    ]},
+  ]},
+};
+
+const STORE_KEY = "courtlog-v1";
+const DRAFT_KEY = "courtlog-draft-v1";
+const STEP = { weight:5, reps:1, time:5 };
+
+/* ============ state ============ */
+let sessions = [];          // saved sessions, newest pushed last
+let today = { A:{}, B:{} };  // working sets per exercise id  -> array of set objects
+let prep  = {};              // exercise id -> bool (prep done, this session)
+let currentDay = "A";
+let currentView = "train";
+let memFallback = false;
+
+/* ============ storage ============
+   Primary store is Firestore (one document per anonymous user), so your log
+   is reliable and backed up. If Firebase isn't configured yet, it falls back
+   to this device's localStorage so the app still works. Both finished sessions
+   AND the in-progress session are saved, so leaving and coming back keeps your
+   place. */
+let fbDB = null, fbDoc = null, fbReady = false;
+
+function fbConfigured(){
+  return typeof firebase !== "undefined" && window.FB_CONFIG &&
+         window.FB_CONFIG.apiKey && !String(window.FB_CONFIG.apiKey).startsWith("PASTE");
+}
+function lsOK(){ try{ const k="__cl_test__"; localStorage.setItem(k,"1"); localStorage.removeItem(k); return true; }catch(e){ return false; } }
+
+async function initFirebase(){
+  if(!fbConfigured()) return false;
+  try{
+    firebase.initializeApp(window.FB_CONFIG);
+    fbDB = firebase.firestore();
+    await new Promise((resolve)=>{
+      firebase.auth().onAuthStateChanged((user)=>{
+        if(user){ fbDoc = fbDB.collection("logs").doc(user.uid); resolve(); }
+      });
+      firebase.auth().signInAnonymously().catch((e)=>{ console.error("auth failed", e); resolve(); });
+    });
+    fbReady = !!fbDoc;
+  }catch(e){ console.error("firebase init failed", e); fbReady = false; }
+  return fbReady;
+}
+
+/* one cached snapshot avoids a second read on startup */
+let _snapCache = undefined;
+async function fbSnap(){
+  if(_snapCache !== undefined) return _snapCache;
+  const s = await fbDoc.get();
+  _snapCache = s.exists ? (s.data() || {}) : {};
+  return _snapCache;
+}
+
+async function kvGet(key){
+  try{
+    if(fbReady && fbDoc){ const d = await fbSnap(); return d[key] != null ? d[key] : null; }
+    if(lsOK()){ return localStorage.getItem(key); }
+  }catch(e){ console.error(e); }
+  return null;
+}
+async function kvSet(key, val){
+  try{
+    if(fbReady && fbDoc){ await fbDoc.set({ [key]: val }, { merge:true }); if(_snapCache) _snapCache[key]=val; return true; }
+    if(lsOK()){ localStorage.setItem(key, val); return true; }
+  }catch(e){ console.error("save failed", e); }
+  memFallback = true; return false;
+}
+async function kvDel(key){
+  try{
+    if(fbReady && fbDoc){ await fbDoc.update({ [key]: firebase.firestore.FieldValue.delete() }); if(_snapCache) delete _snapCache[key]; return; }
+    if(lsOK()){ localStorage.removeItem(key); }
+  }catch(e){}
+}
+
+async function loadData(){
+  if(!fbReady && !lsOK()) memFallback = true;
+  const v = await kvGet(STORE_KEY);
+  if(v){ try{ const d = JSON.parse(v); sessions = d.sessions || []; }catch(e){} }
+}
+async function saveData(){ await kvSet(STORE_KEY, JSON.stringify({sessions})); }
+
+/* ---- in-progress session (draft) ---- */
+let draftTimer = null;
+function scheduleDraftSave(){
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(flushDraft, 600);
+}
+async function flushDraft(){
+  const ok = await kvSet(DRAFT_KEY, JSON.stringify({ day: currentDay, today, prep }));
+  if(ok && !memFallback) showSaved();
+}
+async function loadDraft(){
+  const v = await kvGet(DRAFT_KEY);
+  if(v){ try{
+    const d = JSON.parse(v);
+    if(d.today) today = d.today;
+    if(d.prep)  prep  = d.prep;
+    if(d.day && PROGRAM[d.day]) currentDay = d.day;
+  }catch(e){} }
+}
+async function clearDraft(){ today = {A:{},B:{}}; prep = {}; await kvDel(DRAFT_KEY); }
+
+/* ---- export a backup file ---- */
+function exportData(){
+  const payload = { app:"LightForge", exported:new Date().toISOString(), sessions };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "lightforge-backup-" + new Date().toISOString().slice(0,10) + ".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  toast("Backup downloaded");
+}
+
+let savedT = null;
+function showSaved(){
+  const el = document.getElementById("subline");
+  if(!el) return;
+  el.textContent = "Saved ✓";
+  clearTimeout(savedT);
+  savedT = setTimeout(()=>{ if(!memFallback) el.textContent = statusLine(); }, 1400);
+}
+function statusLine(){
+  if(memFallback) return "Logs won't save here · see notes";
+  if(fbReady)     return "Synced to Firebase";
+  return "Saved on this device";
+}
+
+/* ============ history helpers ============ */
+function metric(type, s){
+  if(!s) return 0;
+  if(type==="weight") return (Number(s.weight)||0)*1000 + (Number(s.reps)||0); // weight first, reps tiebreak
+  if(type==="reps")   return Number(s.reps)||0;
+  if(type==="time")   return Number(s.seconds)||0;
+  return 0;
+}
+function fmtSet(type, s){
+  if(type==="weight") return `${num(s.weight)}×${num(s.reps)}`;
+  if(type==="reps")   return `${num(s.reps)} reps`;
+  if(type==="time")   return `${num(s.seconds)}s`;
+  return "";
+}
+function num(v){ const n=Number(v); return (v===""||v==null||isNaN(n))?"–":(Number.isInteger(n)?n:n); }
+
+function lastEntry(key){
+  for(let i=sessions.length-1;i>=0;i--){
+    const e = (sessions[i].entries||[]).find(x=>x.key===key);
+    if(e && e.sets && e.sets.length) return {sets:e.sets, date:sessions[i].date};
+  }
+  return null;
+}
+function bestSet(key, type){
+  let best=null, bestM=-1;
+  for(const sess of sessions){
+    const e = (sess.entries||[]).find(x=>x.key===key);
+    if(!e) continue;
+    for(const s of (e.sets||[])){
+      const m = metric(type, s);
+      if(m>bestM){ bestM=m; best=s; }
+    }
+  }
+  return best;
+}
+
+/* ============ working-set helpers ============ */
+function blankSet(type){
+  if(type==="weight") return {weight:"", reps:""};
+  if(type==="reps")   return {reps:""};
+  if(type==="time")   return {seconds:""};
+  return {};
+}
+function ensureToday(ex){
+  const bucket = today[currentDay];
+  if(bucket[ex.id]) return;
+  // prefill from last time if available
+  const last = lastEntry(ex.key);
+  if(last && last.sets.length){
+    bucket[ex.id] = last.sets.map(s=>({...s}));
+  } else {
+    bucket[ex.id] = [blankSet(ex.type)];
+  }
+}
+
+/* ============ rendering ============ */
+function render(){
+  document.getElementById("tab-A").classList.toggle("on", currentDay==="A");
+  document.getElementById("tab-B").classList.toggle("on", currentDay==="B");
+  const list = document.getElementById("exlist");
+  list.innerHTML = "";
+  const day = PROGRAM[currentDay];
+
+  day.blocks.forEach(block=>{
+    const bl = document.createElement("div"); bl.className="block";
+    bl.innerHTML = `<div class="block-head"><span class="name">${block.name}</span><span class="rule"></span></div>`;
+    block.items.forEach(ex=> bl.appendChild(exCard(ex)));
+    list.appendChild(bl);
+  });
+}
+
+function exCard(ex){
+  const card = document.createElement("div");
+  card.className = "ex";
+  const last = ex.type==="check" ? null : lastEntry(ex.key);
+  const best = ex.type==="check" ? null : bestSet(ex.key, ex.type);
+
+  // PR live check
+  let isPR = false;
+  if(ex.type!=="check"){
+    const bm = best ? metric(ex.type,best) : -1;
+    ensureToday(ex);
+    for(const s of today[currentDay][ex.id]){
+      if(metric(ex.type,s) > bm && metric(ex.type,s)>0){ isPR=true; break; }
+    }
+  }
+
+  const lastTxt = last ? last.sets.map(s=>fmtSet(ex.type,s)).join("  ·  ") : "—";
+  const bestTxt = best ? fmtSet(ex.type,best) : "—";
+
+  card.innerHTML = `
+    <div class="ex-top">
+      <div class="ex-name">
+        <div class="n">${ex.name}</div>
+        <div class="scheme">${ex.scheme}</div>
+      </div>
+      <div class="ex-flags">
+        <span class="pr ${isPR?'show':''}">PR</span>
+        <span class="chev">▶</span>
+      </div>
+    </div>
+    ${ex.type!=="check" ? `<div class="ex-meta">
+        <div class="m"><span class="k">Last</span><span class="v">${lastTxt}</span></div>
+        <div class="m best"><span class="k">Best</span><span class="v">${bestTxt}</span></div>
+      </div>`:""}
+    <div class="ex-body"></div>`;
+
+  // toggle open
+  card.querySelector(".ex-top").addEventListener("click", ()=>{
+    card.classList.toggle("open");
+  });
+
+  const body = card.querySelector(".ex-body");
+  if(ex.note){ const n=document.createElement("div"); n.className="note"; n.textContent=ex.note; body.appendChild(n); }
+
+  if(ex.type==="check"){
+    const done = !!prep[ex.id];
+    const row = document.createElement("div"); row.className="checkrow";
+    row.innerHTML = `<div class="checkbox ${done?'on':''}">✓</div><div class="lbl">${done?'Done — nice':'Mark done'}</div>`;
+    row.querySelector(".checkbox").addEventListener("click",()=>{ prep[ex.id]=!prep[ex.id]; scheduleDraftSave(); render(); reopen(card); });
+    body.appendChild(row);
+  } else {
+    body.appendChild(setEditor(ex));
+  }
+  return card;
+}
+
+function setEditor(ex){
+  const wrap = document.createElement("div"); wrap.className="sets";
+  const two = ex.type!=="weight";
+  const head = document.createElement("div");
+  head.className = "set-head" + (two?" two":"");
+  head.innerHTML = two
+    ? `<div>Set</div><div>${ex.type==="time"?"Seconds":"Reps"}</div><div></div>`
+    : `<div>Set</div><div>Weight</div><div>Reps</div><div></div>`;
+  wrap.appendChild(head);
+
+  const sets = today[currentDay][ex.id];
+  const best = bestSet(ex.key, ex.type);
+  const bm = best?metric(ex.type,best):-1;
+
+  sets.forEach((s,i)=>{
+    const row = document.createElement("div");
+    row.className = "set-row" + (two?" two":"");
+    const setPR = metric(ex.type,s)>bm && metric(ex.type,s)>0;
+    const no = `<div class="setno">${i+1}</div>`;
+    let fields = "";
+    if(ex.type==="weight"){
+      fields = stepper(ex,i,"weight",s.weight,setPR) + stepper(ex,i,"reps",s.reps,false);
+    } else if(ex.type==="reps"){
+      fields = stepper(ex,i,"reps",s.reps,setPR);
+    } else if(ex.type==="time"){
+      fields = stepper(ex,i,"seconds",s.seconds,setPR);
+    }
+    row.innerHTML = no + fields + `<button class="rm" aria-label="Remove set">×</button>`;
+    row.querySelector(".rm").addEventListener("click",()=>{
+      sets.splice(i,1); if(!sets.length) sets.push(blankSet(ex.type));
+      scheduleDraftSave(); render(); reopen(findCard(ex.id));
+    });
+    wrap.appendChild(row);
+  });
+
+  // wire steppers
+  setTimeout(()=> wireSteppers(wrap, ex), 0);
+
+  const add = document.createElement("button");
+  add.className="addset"; add.textContent="+ Add set";
+  add.addEventListener("click",()=>{
+    const lastSet = sets[sets.length-1];
+    sets.push(lastSet?{...lastSet}:blankSet(ex.type));
+    scheduleDraftSave(); render(); reopen(findCard(ex.id));
+  });
+  wrap.appendChild(add);
+  return wrap;
+}
+
+function stepper(ex,i,field,val,pr){
+  const fieldKey = field==="seconds"?"time":field;
+  return `<div class="stepper ${pr&&field!=="reps"?'pr-set':''}" data-ex="${ex.id}" data-i="${i}" data-field="${field}" data-step="${STEP[fieldKey]}">
+      <button data-dir="-1" aria-label="decrease">−</button>
+      <input type="number" inputmode="numeric" value="${val===""||val==null?'':val}" />
+      <button data-dir="1" aria-label="increase">+</button>
+    </div>`;
+}
+
+function wireSteppers(scope, ex){
+  scope.querySelectorAll(".stepper").forEach(st=>{
+    const id=st.dataset.ex, i=+st.dataset.i, field=st.dataset.field, step=+st.dataset.step;
+    const input=st.querySelector("input");
+    const apply=(v)=>{
+      const sets=today[currentDay][id];
+      if(sets&&sets[i]) sets[i][field]= v===""?"":v;
+    };
+    st.querySelectorAll("button").forEach(b=>{
+      b.addEventListener("click",()=>{
+        let cur=Number(input.value)||0;
+        cur=Math.max(0, cur + (+b.dataset.dir)*step);
+        input.value=cur; apply(cur); livePR(ex); scheduleDraftSave();
+      });
+    });
+    input.addEventListener("input",()=>{ apply(input.value); scheduleDraftSave(); });
+    input.addEventListener("change",()=>{ livePR(ex); scheduleDraftSave(); });
+  });
+}
+
+/* update only the PR badge for an exercise without collapsing the open card */
+function livePR(ex){
+  const card=findCard(ex.id); if(!card) return;
+  const best=bestSet(ex.key,ex.type); const bm=best?metric(ex.type,best):-1;
+  let isPR=false;
+  for(const s of today[currentDay][ex.id]){ if(metric(ex.type,s)>bm && metric(ex.type,s)>0){isPR=true;break;} }
+  const badge=card.querySelector(".pr"); if(badge) badge.classList.toggle("show",isPR);
+}
+
+function findCard(id){
+  const cards=document.querySelectorAll("#exlist .ex");
+  for(const c of cards){
+    const nameEl=c.querySelector(".ex-name .n");
+    if(nameEl && c.__exid===id) return c;
+  }
+  return null;
+}
+// tag cards with their exercise id for lookup
+function tagCards(){
+  const day=PROGRAM[currentDay]; const flat=[];
+  day.blocks.forEach(b=>b.items.forEach(x=>flat.push(x)));
+  const cards=document.querySelectorAll("#exlist .ex");
+  cards.forEach((c,idx)=>{ if(flat[idx]) c.__exid=flat[idx].id; });
+}
+function reopen(card){ if(card) card.classList.add("open"); }
+
+/* ============ save session ============ */
+async function saveSession(){
+  const day=PROGRAM[currentDay]; const entries=[];
+  day.blocks.forEach(b=>b.items.forEach(ex=>{
+    if(ex.type==="check") return;
+    const sets=(today[currentDay][ex.id]||[]).filter(s=>{
+      if(ex.type==="weight") return (Number(s.weight)||0)>0 || (Number(s.reps)||0)>0;
+      if(ex.type==="reps")   return (Number(s.reps)||0)>0;
+      if(ex.type==="time")   return (Number(s.seconds)||0)>0;
+      return false;
+    }).map(s=>({...s}));
+    if(sets.length) entries.push({key:ex.key, name:ex.name, type:ex.type, sets});
+  }));
+
+  if(!entries.length){ toast("Log at least one set first"); return; }
+
+  const wasPR = entries.some(e=>{
+    // compare against best BEFORE this session
+    const best=bestSet(e.key,e.type); const bm=best?metric(e.type,best):-1;
+    return e.sets.some(s=>metric(e.type,s)>bm && metric(e.type,s)>0);
+  });
+
+  sessions.push({ id:Date.now(), day:currentDay, date:new Date().toISOString(), entries });
+  await saveData();
+
+  await clearDraft();
+  render(); tagCards();
+  toast(wasPR ? "Session saved — new PR! 🔥" : "Session saved ✓");
+}
+
+/* ============ history view ============ */
+function renderHistory(){
+  const el=document.getElementById("histlist");
+  if(!sessions.length){
+    el.innerHTML=`<div class="empty"><span class="big">—</span>No sessions logged yet.<br>Train a day and hit save to start your history.</div>`;
+    return;
+  }
+  let html=`<h2>${sessions.length} session${sessions.length>1?'s':''} logged${memFallback?' · (not saved between visits here)':''}</h2>`;
+  [...sessions].reverse().forEach(s=>{
+    const d=new Date(s.date);
+    const dateStr=d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+    const timeStr=d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+    const lines=s.entries.map(e=>{
+      const setsTxt=e.sets.map(x=>fmtSet(e.type,x)).join("  ·  ");
+      return `<div class="sess-line"><span class="en">${e.name}</span><span class="ev">${setsTxt}</span></div>`;
+    }).join("");
+    html+=`<div class="sess">
+      <div class="sess-top">
+        <div class="sess-day">${s.day}</div>
+        <div class="sess-info"><div class="d">${dateStr}</div><div class="s">${timeStr} · ${s.entries.length} exercise${s.entries.length>1?'s':''}</div></div>
+        <span class="chev" style="color:var(--slate-soft)">▶</span>
+      </div>
+      <div class="sess-body">${lines}</div>
+    </div>`;
+  });
+  html+=`<div class="danger"><button id="exportbtn" style="color:var(--slate);margin-bottom:8px">Export a backup (.json)</button><button id="clearbtn">Clear all data</button></div>`;
+  el.innerHTML=html;
+  el.querySelectorAll(".sess-top").forEach(t=>t.addEventListener("click",()=>{
+    const s=t.parentElement; s.classList.toggle("open");
+    const ch=t.querySelector(".chev"); if(ch) ch.style.transform=s.classList.contains("open")?"rotate(90deg)":"";
+  }));
+  const exp=document.getElementById("exportbtn");
+  if(exp) exp.addEventListener("click", exportData);
+  const clr=document.getElementById("clearbtn");
+  if(clr) clr.addEventListener("click", async ()=>{
+    if(confirm("Delete all logged sessions? This can't be undone.")){
+      sessions=[]; await saveData(); await clearDraft(); renderHistory();
+      toast("All data cleared");
+    }
+  });
+}
+
+/* ============ view switching ============ */
+function setView(v){
+  currentView=v;
+  document.getElementById("nav-train").classList.toggle("on",v==="train");
+  document.getElementById("nav-hist").classList.toggle("on",v==="hist");
+  document.getElementById("view-train").style.display = v==="train"?"":"none";
+  document.getElementById("view-hist").style.display  = v==="hist"?"":"none";
+  document.getElementById("savebar").style.display    = v==="train"?"":"none";
+  if(v==="hist") renderHistory();
+  else { render(); tagCards(); }
+}
+
+/* ============ toast ============ */
+let toastT=null;
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2200);
+}
+
+/* ============ wiring ============ */
+document.getElementById("tab-A").addEventListener("click",()=>{currentDay="A";scheduleDraftSave();render();tagCards();});
+document.getElementById("tab-B").addEventListener("click",()=>{currentDay="B";scheduleDraftSave();render();tagCards();});
+document.getElementById("nav-train").addEventListener("click",()=>setView("train"));
+document.getElementById("nav-hist").addEventListener("click",()=>setView("hist"));
+document.getElementById("savebtn").addEventListener("click",saveSession);
+
+// re-tag after each render
+const _render=render;
+render=function(){ _render(); tagCards(); };
+
+(async function init(){
+  await initFirebase();
+  await loadData();
+  await loadDraft();
+  render();
+  const sub = document.getElementById("subline");
+  if(sub) sub.textContent = statusLine();
+
+  // Persist the in-progress session the moment the app is backgrounded or closed —
+  // this is what makes "leave and come back" keep your place on a phone.
+  document.addEventListener("visibilitychange",()=>{ if(document.hidden) flushDraft(); });
+  window.addEventListener("pagehide", flushDraft);
+  window.addEventListener("beforeunload", flushDraft);
+})();
+</script>
+</body>
+</html>
