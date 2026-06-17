@@ -157,7 +157,22 @@ service cloud.firestore {
 > the original single line. The web API key in the URL is not a secret (it ships in the client
 > HTML); the unguessable part is the anonymous UID in the path.
 
-Deploy (CLI, from a folder with the app at `public/index.html`):
+### Deploy — automated (GitHub Actions)
+
+This repo auto-deploys: **every push to `main` publishes to `https://lightforge-jj.web.app`**
+via `.github/workflows/deploy.yml`. The workflow stages the single file as
+`public/index.html` (per `firebase.json`) and deploys the `live` channel of project
+`lightforge-jj` (pinned in `.firebaserc`, so it can't go to sideout-vb). No manual step per
+change — edit `lightforge.html`, push to `main`, done.
+
+**One-time setup** to arm it: add a repository secret named
+`FIREBASE_SERVICE_ACCOUNT_LIGHTFORGE_JJ` (a Firebase service-account key JSON).
+GitHub → repo **Settings → Secrets and variables → Actions → New repository secret**; the
+JSON comes from Firebase console → **Project settings → Service accounts → Generate new
+private key**. Until the secret exists, the workflow runs but skips the deploy (stays green).
+You can also trigger a deploy by hand from the **Actions** tab (`workflow_dispatch`).
+
+### Deploy — manual fallback (first-time project setup, or if Actions is off)
 ```
 firebase use lightforge-jj      # confirm correct project — NOT sideout-vb
 firebase init hosting           # public dir: public; SPA: No; GitHub: No

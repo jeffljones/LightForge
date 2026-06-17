@@ -1,0 +1,39 @@
+name: Deploy to Firebase Hosting
+
+# Every push to main publishes the app to https://lightforge-jj.web.app.
+# One-time setup: add a repository secret named FIREBASE_SERVICE_ACCOUNT_LIGHTFORGE_JJ
+# (the JSON of a Firebase service-account key). Until that secret exists, the deploy
+# step is skipped so the run stays green instead of failing.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # lets you trigger a deploy by hand from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIGHTFORGE_JJ }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app is a single file; Firebase serves the "public" dir, so stage it as index.html.
+      - name: Stage the single-file app as index.html
+        run: |
+          mkdir -p public
+          cp lightforge.html public/index.html
+
+      - name: Deploy to Firebase Hosting (live channel)
+        if: env.SA != ''
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_LIGHTFORGE_JJ }}
+          channelId: live
+          projectId: lightforge-jj
+
+      - name: Secret not set — deploy skipped
+        if: env.SA == ''
+        run: |
+          echo "::warning title=Firebase secret missing::Add the FIREBASE_SERVICE_ACCOUNT_LIGHTFORGE_JJ repository secret to enable auto-deploy. The live site was not updated."
