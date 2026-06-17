@@ -168,6 +168,17 @@
   .danger button{width:100%;border:1px solid var(--line);background:transparent;color:var(--brick);font-weight:600;font-size:13.5px;padding:11px;border-radius:12px;cursor:pointer}
   .danger button:active{background:#fff}
 
+  /* delete-one + share/monitor */
+  .sess-del{margin-top:10px;border:1px solid var(--line);background:transparent;color:var(--brick);font-weight:600;font-size:12.5px;padding:8px;border-radius:9px;cursor:pointer;width:100%}
+  .sess-del:active{background:#fff}
+  .share{margin:22px 2px 0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:13px 14px}
+  .share-h{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:12px;color:var(--slate)}
+  .share-sub{font-size:12.5px;color:var(--text-soft);margin:6px 0 10px;line-height:1.4}
+  .share-row{display:flex;gap:8px}
+  .share-row input{flex:1;min-width:0;border:1px solid var(--line);background:var(--paper);border-radius:9px;padding:9px 10px;font-size:12px;color:var(--text-soft);font-family:ui-monospace,Menlo,monospace}
+  .share-row button{flex:0 0 auto;border:0;background:var(--ink);color:#fff;font-weight:600;font-size:13px;padding:9px 14px;border-radius:9px;cursor:pointer}
+  .share-row button:active{background:var(--ink-2)}
+
   .loading{display:flex;align-items:center;justify-content:center;min-height:60vh;color:var(--slate);font-family:'Oswald',sans-serif;letter-spacing:.1em;text-transform:uppercase;font-size:14px}
 
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -297,6 +308,7 @@ const PROGRAM = {
 
 const STORE_KEY = "courtlog-v1";
 const DRAFT_KEY = "courtlog-draft-v1";
+const LIVE_KEY  = "lightforgeLive";   // denormalized read-only feed for external monitoring
 const STEP = { weight:5, reps:1, time:5 };
 
 /* ============ state ============ */
@@ -382,6 +394,7 @@ function scheduleDraftSave(){
 }
 async function flushDraft(){
   const ok = await kvSet(DRAFT_KEY, JSON.stringify({ day: currentDay, today, prep }));
+  await writeLive();
   if(ok && !memFallback) showSaved();
 }
 async function loadDraft(){
@@ -405,6 +418,45 @@ function exportData(){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
   toast("Backup downloaded");
+}
+
+/* ---- live read-only feed (for external / Claude monitoring) ----
+   A denormalized snapshot written to its own Firestore field so it can be read
+   from one URL and understood without any app context. */
+function buildLiveFeed(){
+  const day = PROGRAM[currentDay] || PROGRAM.A;
+  const inProgress = [];
+  day.blocks.forEach(b=> b.items.forEach(ex=>{
+    if(ex.type==="check"){
+      inProgress.push({ block:b.name, name:ex.name, kind:"prep", target:ex.scheme, done:!!prep[ex.id] });
+      return;
+    }
+    const cur = (today[currentDay] && today[currentDay][ex.id]) || [];
+    const logged = cur.filter(s=>metric(ex.type,s)>0).map(s=>fmtSet(ex.type,s));
+    const last = lastEntry(ex.key);
+    const best = bestSet(ex.key, ex.type);
+    inProgress.push({
+      block:b.name, name:ex.name, kind:ex.type, target:ex.scheme,
+      logged, last:last?last.sets.map(s=>fmtSet(ex.type,s)):null, best:best?fmtSet(ex.type,best):null
+    });
+  }));
+  return {
+    app:"LightForge",
+    note:"Read-only live feed. 'inProgress' = current unsaved workout; 'recent' = saved history, newest first.",
+    updated:new Date().toISOString(),
+    activeDay:currentDay, dayTitle:day.title, inProgress,
+    recent:[...sessions].slice(-8).reverse().map(s=>({
+      day:s.day, date:s.date,
+      entries:s.entries.map(e=>({ name:e.name, sets:e.sets.map(x=>fmtSet(e.type,x)) }))
+    }))
+  };
+}
+async function writeLive(){ try{ await kvSet(LIVE_KEY, JSON.stringify(buildLiveFeed())); }catch(e){} }
+function monitorURL(){
+  if(!fbReady || !fbDoc || !window.FB_CONFIG) return null;
+  const { projectId, apiKey } = window.FB_CONFIG;
+  return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/logs/${fbDoc.id}`
+       + `?key=${apiKey}&mask.fieldPaths=${LIVE_KEY}`;
 }
 
 let savedT = null;
@@ -444,9 +496,9 @@ function lastEntry(key){
   }
   return null;
 }
-function bestSet(key, type){
+function bestSet(key, type, pool){
   let best=null, bestM=-1;
-  for(const sess of sessions){
+  for(const sess of (pool||sessions)){
     const e = (sess.entries||[]).find(x=>x.key===key);
     if(!e) continue;
     for(const s of (e.sets||[])){
@@ -455,6 +507,17 @@ function bestSet(key, type){
     }
   }
   return best;
+}
+/* a saved session is "today's" if it's the same calendar day AND day-template */
+function sameLocalDay(iso, ref){
+  const a=new Date(iso), b=ref||new Date();
+  return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+}
+function todaySessionIndex(day){
+  for(let i=sessions.length-1;i>=0;i--){
+    if(sessions[i].day===day && sameLocalDay(sessions[i].date)) return i;
+  }
+  return -1;
 }
 
 /* ============ working-set helpers ============ */
@@ -668,18 +731,27 @@ async function saveSession(){
 
   if(!entries.length){ toast("Log at least one set first"); return; }
 
+  // One workout per day-template per calendar day: update in place instead of duplicating.
+  const idx = todaySessionIndex(currentDay);
+  const baseline = idx>=0 ? sessions.filter((_,i)=>i!==idx) : sessions;
   const wasPR = entries.some(e=>{
-    // compare against best BEFORE this session
-    const best=bestSet(e.key,e.type); const bm=best?metric(e.type,best):-1;
+    // compare against best BEFORE this workout (excluding the one we're replacing)
+    const best=bestSet(e.key,e.type,baseline); const bm=best?metric(e.type,best):-1;
     return e.sets.some(s=>metric(e.type,s)>bm && metric(e.type,s)>0);
   });
 
-  sessions.push({ id:Date.now(), day:currentDay, date:new Date().toISOString(), entries });
+  if(idx>=0){
+    sessions[idx] = { ...sessions[idx], entries };   // keep original id + date
+  } else {
+    sessions.push({ id:Date.now(), day:currentDay, date:new Date().toISOString(), entries });
+  }
   await saveData();
 
   await clearDraft();
   render(); tagCards();
-  toast(wasPR ? "Session saved — new PR! 🔥" : "Session saved ✓");
+  await writeLive();
+  const verb = idx>=0 ? "updated" : "saved";
+  toast(wasPR ? `Workout ${verb} — new PR! 🔥` : `Workout ${verb} ✓`);
 }
 
 /* ============ history view ============ */
@@ -704,9 +776,19 @@ function renderHistory(){
         <div class="sess-info"><div class="d">${dateStr}</div><div class="s">${timeStr} · ${s.entries.length} exercise${s.entries.length>1?'s':''}</div></div>
         <span class="chev" style="color:var(--slate-soft)">▶</span>
       </div>
-      <div class="sess-body">${lines}</div>
+      <div class="sess-body">${lines}
+        <button class="sess-del" data-id="${s.id}">Delete this session</button>
+      </div>
     </div>`;
   });
+  const mu = monitorURL();
+  if(mu){
+    html+=`<div class="share">
+      <div class="share-h">Live monitor link</div>
+      <div class="share-sub">Read-only. Anyone with this link can see your log — paste it into a Claude chat for real-time feedback while you train. It can't write or change anything.</div>
+      <div class="share-row"><input id="shareurl" readonly value="${mu}"><button id="sharecopy">Copy</button></div>
+    </div>`;
+  }
   html+=`<div class="danger"><button id="exportbtn" style="color:var(--slate);margin-bottom:8px">Export a backup (.json)</button><button id="clearbtn">Clear all data</button></div>`;
   el.innerHTML=html;
   el.querySelectorAll(".sess-top").forEach(t=>t.addEventListener("click",()=>{
@@ -718,9 +800,25 @@ function renderHistory(){
   const clr=document.getElementById("clearbtn");
   if(clr) clr.addEventListener("click", async ()=>{
     if(confirm("Delete all logged sessions? This can't be undone.")){
-      sessions=[]; await saveData(); await clearDraft(); renderHistory();
+      sessions=[]; await saveData(); await clearDraft(); await writeLive(); renderHistory();
       toast("All data cleared");
     }
+  });
+  el.querySelectorAll(".sess-del").forEach(b=>b.addEventListener("click", async (ev)=>{
+    ev.stopPropagation();
+    const id=Number(b.dataset.id);
+    if(confirm("Delete this session? This can't be undone.")){
+      const i=sessions.findIndex(s=>s.id===id);
+      if(i>=0){ sessions.splice(i,1); await saveData(); await writeLive(); renderHistory(); toast("Session deleted"); }
+    }
+  }));
+  const sc=document.getElementById("sharecopy");
+  if(sc) sc.addEventListener("click",()=>{
+    const inp=document.getElementById("shareurl"); if(!inp) return;
+    inp.focus(); inp.select();
+    const done=()=>toast("Link copied");
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(inp.value).then(done).catch(done); }
+    else { try{document.execCommand("copy");}catch(e){} done(); }
   });
 }
 
@@ -750,9 +848,14 @@ document.getElementById("nav-train").addEventListener("click",()=>setView("train
 document.getElementById("nav-hist").addEventListener("click",()=>setView("hist"));
 document.getElementById("savebtn").addEventListener("click",saveSession);
 
-// re-tag after each render
+function updateSaveButton(){
+  const btn=document.getElementById("savebtn"); if(!btn) return;
+  btn.textContent = todaySessionIndex(currentDay) >= 0 ? "Update workout" : "Save session";
+}
+
+// re-tag + refresh the save-button label after each render
 const _render=render;
-render=function(){ _render(); tagCards(); };
+render=function(){ _render(); tagCards(); updateSaveButton(); };
 
 (async function init(){
   await initFirebase();

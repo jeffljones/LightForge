@@ -143,11 +143,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /logs/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow get:   if true;                                              // public read of a single doc — enables the live monitor link
+      allow list:  if false;                                             // but NOT enumerating everyone's logs
+      allow write: if request.auth != null && request.auth.uid == uid;   // writes stay locked to the owner
     }
   }
 }
 ```
+> The original rule was `allow read, write: if request.auth != null && request.auth.uid == uid`
+> (fully private). The `allow get: if true` above is what makes the **live monitor link**
+> (§9) work: anyone who has your exact doc URL can *read* it, but writes are still owner-only
+> and nobody can list/enumerate other users' docs. If you ever want it private again, restore
+> the original single line. The web API key in the URL is not a secret (it ships in the client
+> HTML); the unguessable part is the anonymous UID in the path.
 
 Deploy (CLI, from a folder with the app at `public/index.html`):
 ```
@@ -176,13 +184,43 @@ already in `<head>`).
 
 ---
 
-## 9. Features to implement
+## 9. Features
 
-_(fill this in — the part you didn't want to clutter the other chat with)_
+### Done
 
-- [ ]
-- [ ]
-- [ ]
+- [x] **No duplicate sessions / smart save.** Saving collapses to **one workout per
+      day-template per calendar day**. If a session for the current day already exists,
+      a save *updates it in place* (keeps the original `id` + `date`) instead of appending a
+      second one. The save button reflects this: it reads **"Update workout"** when today's
+      session exists, **"Save session"** otherwise, and resets automatically on a new calendar
+      day. Logic: `todaySessionIndex(day)` + `sameLocalDay()`; PR detection excludes the
+      session being replaced from its baseline (`bestSet(key,type,pool)`).
+- [x] **Delete a single session.** Each session in History has a "Delete this session" button
+      (confirm-gated). Removes exactly one match by `id` (so it cleans up an existing
+      duplicate without nuking both).
+- [x] **Live read-only monitor feed (for Claude/real-time feedback).** On every edit and save
+      the app writes a denormalized, self-describing snapshot to a new Firestore field
+      `lightforgeLive` (`LIVE_KEY`) via the kv layer — current in-progress sets plus recent
+      history, with exercise names, targets, last and best. History shows a **"Live monitor
+      link"** (copy button) pointing at a masked Firestore REST URL:
+      `…/documents/logs/<uid>?key=<apiKey>&mask.fieldPaths=lightforgeLive`. Paste that into a
+      Claude chat and it can read the workout as it happens. **Requires the public `get` rule
+      in §7** (until those rules are published + the app redeployed, the link returns
+      `PERMISSION_DENIED`). Helpers: `buildLiveFeed()`, `writeLive()`, `monitorURL()`.
+
+### Manual steps to make the monitor link live
+
+1. Publish the updated Firestore rules in §7 (adds `allow get: if true`).
+2. Redeploy hosting (§7) so the new `lightforge.html` is live.
+3. Open the app → **History** → copy the **Live monitor link** → paste into a Claude chat.
+   (The `lightforgeLive` field is created the first time you edit/save after deploying, so
+   log at least one set first.)
+
+### Possible next
+
+- [ ] **Edit an older session** (not just today's): a date picker on save + loading a past
+      session back into the editor. Today's workout is already editable via the update-in-place
+      save; this would extend it to arbitrary past dates.
 
 ---
 
