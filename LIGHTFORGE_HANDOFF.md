@@ -54,15 +54,28 @@ They write to **Firestore if configured + signed in, else `localStorage`** (devi
 fallback so the file still works before deploy). The whole rest of the app is
 backend-agnostic and only talks to these three functions.
 
-**Firestore layout:** one document per user at `logs/{uid}`. The kv keys are stored as
-*fields* on that one doc, each holding a JSON **string**:
+**Firestore layout:** ONE shared document at `logs/{SHARED_ID}` that *every* device for this
+user reads and writes (no per-device login). `SHARED_ID` is a fixed constant in the app. The
+kv keys are stored as *fields* on that one doc, each holding a JSON **string**:
 
 - field `courtlog-v1`        → `JSON.stringify({ sessions: [...] })`
 - field `courtlog-draft-v1`  → `JSON.stringify({ day, today, prep })`
+- field `lightforgeLive`     → denormalized read-only feed (the monitor link)
 
-> Gotcha: the key constants are still named `courtlog-*` (the app was renamed Court Log →
-> LightForge but the storage keys were left alone so existing data isn't orphaned). Don't
-> rename them without a migration. Constants: `STORE_KEY`, `DRAFT_KEY`.
+> **Why shared, not `logs/{uid}`:** anonymous auth gives each device a *different* UID, so the
+> original per-UID layout couldn't show the same data on phone + desktop. We still sign in
+> anonymously (so writes are authenticated), but point all devices at one fixed doc. Tradeoff:
+> security is "obscure doc id" rather than per-user isolation — fine here (non-private data,
+> single user). To go private later, switch to real auth and key the doc by `uid` again.
+
+> Gotcha: the session/draft key constants are still named `courtlog-*` (the app was renamed
+> Court Log → LightForge but the storage keys were left alone so existing data isn't orphaned).
+> Don't rename them without a migration. Constants: `STORE_KEY`, `DRAFT_KEY`, `SHARED_ID`.
+
+> Recovery: on first cloud sync, if the shared doc has never held a `courtlog-v1` field but the
+> browser has local sessions, the app lifts them into the cloud (`migrateLocalToCloud`). Guarded
+> on field-absent so an intentional "Clear all" is never undone. History also has Import (merges
+> a backup `.json` by session id) as a manual restore path.
 
 A one-shot snapshot cache (`_snapCache`) avoids a second Firestore read on startup; `kvSet`
 /`kvDel` keep it in sync.
@@ -136,26 +149,30 @@ chest press, lat pulldown, row, shoulder press, reverse fly, Pallof, carry.
 
 Two prerequisites in the **lightforge-jj** console or it silently falls back to device-only:
 
-1. **Authentication → Sign-in method → Anonymous → enable.**
+1. **Authentication → Sign-in method → Anonymous → ENABLE.** (Required — without it the app
+   gets `auth/admin-restricted-operation` on sign-in and silently falls back to device-only.
+   Anonymous auth is *not* a login screen; it's invisible.)
 2. **Firestore → create (Production) → Rules → publish:**
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /logs/{uid} {
-      allow get:   if true;                                              // public read of a single doc — enables the live monitor link
-      allow list:  if false;                                             // but NOT enumerating everyone's logs
-      allow write: if request.auth != null && request.auth.uid == uid;   // writes stay locked to the owner
+    match /logs/{docId} {
+      allow get:   if true;                  // public read — live monitor link + the shared log
+      allow list:  if false;                 // but NOT enumerating the collection
+      allow write: if request.auth != null;  // any signed-in (anonymous) device can write the shared doc
     }
   }
 }
 ```
-> The original rule was `allow read, write: if request.auth != null && request.auth.uid == uid`
-> (fully private). The `allow get: if true` above is what makes the **live monitor link**
-> (§9) work: anyone who has your exact doc URL can *read* it, but writes are still owner-only
-> and nobody can list/enumerate other users' docs. If you ever want it private again, restore
-> the original single line. The web API key in the URL is not a secret (it ships in the client
-> HTML); the unguessable part is the anonymous UID in the path.
+> These rules back the **shared-log** model (§3): all of this user's devices sign in anonymously
+> and read/write one fixed doc `logs/{SHARED_ID}`. The write rule is `request.auth != null`
+> (any signed-in device) rather than `request.auth.uid == docId`, because with a *shared* doc
+> the id isn't a uid. Reads are public so the monitor link works. Tradeoff: anyone who knows the
+> obscure doc id (it ships in the client JS) and signs in anonymously could write it — acceptable
+> for a single-user, non-private training log. To kill all writes instantly, disable Anonymous
+> auth. To make it private again: switch to real auth and use `allow write: if request.auth.uid
+> == docId` with the doc keyed by uid.
 
 ### Deploy — automated (GitHub Actions)
 

@@ -309,6 +309,7 @@ const PROGRAM = {
 const STORE_KEY = "courtlog-v1";
 const DRAFT_KEY = "courtlog-draft-v1";
 const LIVE_KEY  = "lightforgeLive";   // denormalized read-only feed for external monitoring
+const SHARED_ID = "sharedlog-9c2f7a4e1b6d3f80";  // one shared cloud doc for all of this user's devices (no per-device login)
 const STEP = { weight:5, reps:1, time:5 };
 
 /* ============ state ============ */
@@ -320,11 +321,12 @@ let currentView = "train";
 let memFallback = false;
 
 /* ============ storage ============
-   Primary store is Firestore (one document per anonymous user), so your log
-   is reliable and backed up. If Firebase isn't configured yet, it falls back
-   to this device's localStorage so the app still works. Both finished sessions
-   AND the in-progress session are saved, so leaving and coming back keeps your
-   place. */
+   Primary store is Firestore — ONE shared document (SHARED_ID) that every one of
+   this user's devices reads and writes, so the log is the same everywhere with no
+   login screen. If Firebase isn't reachable (e.g. anonymous auth not enabled yet)
+   it falls back to this device's localStorage so the app still works. Both finished
+   sessions AND the in-progress session are saved, so leaving and coming back keeps
+   your place. */
 let fbDB = null, fbDoc = null, fbReady = false;
 
 function fbConfigured(){
@@ -340,7 +342,7 @@ async function initFirebase(){
     fbDB = firebase.firestore();
     await new Promise((resolve)=>{
       firebase.auth().onAuthStateChanged((user)=>{
-        if(user){ fbDoc = fbDB.collection("logs").doc(user.uid); resolve(); }
+        if(user){ fbDoc = fbDB.collection("logs").doc(SHARED_ID); resolve(); }
       });
       firebase.auth().signInAnonymously().catch((e)=>{ console.error("auth failed", e); resolve(); });
     });
@@ -383,6 +385,24 @@ async function loadData(){
   if(!fbReady && !lsOK()) memFallback = true;
   const v = await kvGet(STORE_KEY);
   if(v){ try{ const d = JSON.parse(v); sessions = d.sessions || []; }catch(e){} }
+  // One-time recovery: the shared cloud doc has NEVER held a sessions field (v == null) yet
+  // this browser has locally-saved sessions (from before sync was on) — lift them into the
+  // cloud. Keyed on v==null so an intentional "Clear all" (which writes {sessions:[]}) is
+  // never undone on the next load.
+  if(fbReady && v == null) await migrateLocalToCloud();
+}
+let migratedCount = 0;
+async function migrateLocalToCloud(){
+  if(!fbReady || !fbDoc || sessions.length) return;
+  let local = null;
+  try{ if(lsOK()) local = localStorage.getItem(STORE_KEY); }catch(e){}
+  if(!local) return;
+  let parsed; try{ parsed = JSON.parse(local); }catch(e){ return; }
+  const localSessions = (parsed && parsed.sessions) || [];
+  if(!localSessions.length) return;
+  sessions = localSessions;
+  await saveData();          // push this device's history up to the shared cloud doc
+  migratedCount = localSessions.length;
 }
 async function saveData(){ await kvSet(STORE_KEY, JSON.stringify({sessions})); }
 
@@ -418,6 +438,23 @@ function exportData(){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
   toast("Backup downloaded");
+}
+
+/* ---- import a backup file (merges by session id, never clobbers existing data) ---- */
+function importData(file){
+  const reader=new FileReader();
+  reader.onload=async ()=>{
+    let parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast("Couldn't read that file"); return; }
+    const incoming=(parsed && parsed.sessions) || [];
+    if(!incoming.length){ toast("No sessions in that file"); return; }
+    const have=new Set(sessions.map(s=>s.id));
+    let added=0;
+    incoming.forEach(s=>{ if(s && s.entries && !have.has(s.id)){ sessions.push(s); have.add(s.id); added++; } });
+    sessions.sort((a,b)=> new Date(a.date)-new Date(b.date));
+    await saveData(); await writeLive(); renderHistory();
+    toast(added ? `Imported ${added} session${added>1?'s':''} ✓` : "Already up to date");
+  };
+  reader.readAsText(file);
 }
 
 /* ---- live read-only feed (for external / Claude monitoring) ----
@@ -789,7 +826,12 @@ function renderHistory(){
       <div class="share-row"><input id="shareurl" readonly value="${mu}"><button id="sharecopy">Copy</button></div>
     </div>`;
   }
-  html+=`<div class="danger"><button id="exportbtn" style="color:var(--slate);margin-bottom:8px">Export a backup (.json)</button><button id="clearbtn">Clear all data</button></div>`;
+  html+=`<div class="danger">
+    <button id="exportbtn" style="color:var(--slate);margin-bottom:8px">Export a backup (.json)</button>
+    <button id="importbtn" style="color:var(--slate);margin-bottom:8px">Import a backup (.json)</button>
+    <input id="importfile" type="file" accept="application/json,.json" style="display:none">
+    <button id="clearbtn">Clear all data</button>
+  </div>`;
   el.innerHTML=html;
   el.querySelectorAll(".sess-top").forEach(t=>t.addEventListener("click",()=>{
     const s=t.parentElement; s.classList.toggle("open");
@@ -797,6 +839,11 @@ function renderHistory(){
   }));
   const exp=document.getElementById("exportbtn");
   if(exp) exp.addEventListener("click", exportData);
+  const imp=document.getElementById("importbtn"), impf=document.getElementById("importfile");
+  if(imp && impf){
+    imp.addEventListener("click",()=>impf.click());
+    impf.addEventListener("change",()=>{ if(impf.files && impf.files[0]){ importData(impf.files[0]); impf.value=""; } });
+  }
   const clr=document.getElementById("clearbtn");
   if(clr) clr.addEventListener("click", async ()=>{
     if(confirm("Delete all logged sessions? This can't be undone.")){
@@ -864,6 +911,7 @@ render=function(){ _render(); tagCards(); updateSaveButton(); };
   render();
   const sub = document.getElementById("subline");
   if(sub) sub.textContent = statusLine();
+  if(migratedCount) toast(`Recovered ${migratedCount} saved session${migratedCount>1?'s':''} to the cloud ✓`);
 
   // Persist the in-progress session the moment the app is backgrounded or closed —
   // this is what makes "leave and come back" keep your place on a phone.
