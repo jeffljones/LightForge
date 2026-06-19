@@ -427,6 +427,14 @@ async function loadDraft(){
   }catch(e){} }
 }
 async function clearDraft(){ today = {A:{},B:{}}; prep = {}; await kvDel(DRAFT_KEY); }
+/* check-items (prep/mobility) live in the draft, which is wiped on save — so reflect today's
+   saved prep back into the live state on load. Any in-progress draft toggle takes precedence. */
+function rehydratePrep(){
+  const ti = todaySessionIndex(currentDay);
+  if(ti>=0 && sessions[ti] && sessions[ti].prep){
+    prep = { ...sessions[ti].prep, ...prep };
+  }
+}
 
 /* ---- export a backup file ---- */
 function exportData(){
@@ -777,14 +785,19 @@ async function saveSession(){
     return e.sets.some(s=>metric(e.type,s)>bm && metric(e.type,s)>0);
   });
 
+  // capture completed prep/mobility (check-type) items so they persist on the saved session
+  const prepDone = {};
+  day.blocks.forEach(b=>b.items.forEach(ex=>{ if(ex.type==="check" && prep[ex.id]) prepDone[ex.id]=true; }));
+
   if(idx>=0){
-    sessions[idx] = { ...sessions[idx], entries };   // keep original id + date
+    sessions[idx] = { ...sessions[idx], entries, prep:prepDone };   // keep original id + date
   } else {
-    sessions.push({ id:Date.now(), day:currentDay, date:new Date().toISOString(), entries });
+    sessions.push({ id:Date.now(), day:currentDay, date:new Date().toISOString(), entries, prep:prepDone });
   }
   await saveData();
 
   await clearDraft();
+  prep = { ...prepDone };                 // keep today's prep ticked after the save (draft was cleared)
   render(); tagCards();
   await writeLive();
   const verb = idx>=0 ? "updated" : "saved";
@@ -908,6 +921,7 @@ render=function(){ _render(); tagCards(); updateSaveButton(); };
   await initFirebase();
   await loadData();
   await loadDraft();
+  rehydratePrep();
   render();
   const sub = document.getElementById("subline");
   if(sub) sub.textContent = statusLine();
