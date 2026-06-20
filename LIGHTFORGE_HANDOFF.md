@@ -123,7 +123,7 @@ each item (exercise) =
   detection all derive from it.
 
 Current program: **Day A** ankle prep, pogo hops, RDL, leg press, split squat/step-up,
-leg extension, leg curl, calf raises, Pallof, carry. **Day B** thoracic prep, med-ball,
+leg extension, leg curl, standing + seated calf raises, Pallof, carry. **Day B** thoracic prep, med-ball,
 chest press, lat pulldown, row, shoulder press, reverse fly, Pallof, carry.
 
 ---
